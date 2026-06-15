@@ -52,6 +52,7 @@ let WEREAD_SCREENSHOT = true; // Reading期间是否每分钟截图
 let WEREAD_AGREE_TERMS = true; // Agree to terms
 let EMAIL_PORT = 465; // SMTP port number, default 465
 let BARK_KEY = ""; // Bark推送密钥
+let XTUI_KEY = "";
 let BARK_SERVER = "https://api.day.app"; // Bark服务器地址
 let WEREAD_DATA_DIR = ".weread"; // 默认数据目录
 let DEFAULT_BOOK_URL =
@@ -68,6 +69,7 @@ let DEFAULT_BOOK_URL =
 // EMAIL_FROM
 // EMAIL_TO
 // BARK_KEY
+// XTUI_KEY
 // BARK_SERVER
 // WEREAD_DATA_DIR
 // DEFAULT_BOOK_URL
@@ -90,6 +92,7 @@ const RUN_OPTION_SPECS = [
   { envKey: "EMAIL_TO", flag: "email-to", type: "string", description: "Email recipient." },
   { envKey: "EMAIL_PORT", flag: "email-port", type: "integer", description: "SMTP port." },
   { envKey: "BARK_KEY", flag: "bark-key", type: "string", description: "Bark notification key." },
+  { envKey: "XTUI_KEY", flag: "xtui-key", type: "string", description: "Xtui notification key." },
   { envKey: "BARK_SERVER", flag: "bark-server", type: "string", description: "Bark server base URL." },
   { envKey: "WEREAD_DATA_DIR", flag: "weread-data-dir", type: "string", description: "Data directory for cookies, logs and screenshots." },
   { envKey: "DEFAULT_BOOK_URL", flag: "default-book-url", type: "string", description: "Fallback reading URL." },
@@ -167,6 +170,7 @@ function setRuntimeConfigFromEnv(env = process.env) {
     : parseIntegerValue(env.EMAIL_PORT, "email-port");
   BARK_KEY = env.BARK_KEY || "";
   BARK_SERVER = env.BARK_SERVER || "https://api.day.app";
+  XTUI_KEY = env.XTUI_KEY || "";
   WEREAD_DATA_DIR = env.WEREAD_DATA_DIR || resolveDefaultDataDir();
   DEFAULT_BOOK_URL =
     env.DEFAULT_BOOK_URL ||
@@ -830,6 +834,11 @@ async function notifyLoginLink(loginUrl) {
     );
   }
 
+  if (XTUI_KEY) {
+    tasks.push(
+      sendXtui("微信读书挑战", "请扫码登录微信读书", {})
+    );
+  }
   if (canSendLoginLinkEmail()) {
     tasks.push(
       sendMail(
@@ -1028,6 +1037,30 @@ async function sendMail(subject, text, filePaths = [], options = {}) {
     console.error("Error sending email: ", error);
     return false;
   }
+}
+
+async function sendXtui(title, body, options = {}) {
+    if (!XTUI_KEY) {
+        console.info("XTUI推送密钥未配置");
+        return false;
+    }
+    const params = new URLSearchParams({
+        text: title,
+        desp: body,
+    });
+    try {
+        const response = await fetch(`https://wx.xtuis.cn/${XTUI_KEY}.send?${params.toString()}`);
+
+        const data = await response.text();
+
+        if (!response.ok) {
+            console.error(`XTUI推送失败: ${response.statusCode} - ${data}`);
+        } else {
+            console.info(`XTUI推送发送成功 - ${data}`);
+        }
+    } catch (error) {
+        console.error("XTUI推送请求错误:", error.message);
+    }
 }
 
 async function sendBark(title, body, options = {}) {
@@ -1828,6 +1861,9 @@ async function runMain() {
         level: "critical",
         sound: "alarm"
       });
+      if (XTUI_KEY) {
+        sendXtui("微信读书挑战", "登录失败");
+      }
       return;
     }
 
@@ -2080,6 +2116,9 @@ async function runMain() {
       level: "active",
       sound: "success"
     });
+    if (XTUI_KEY) {
+        sendXtui("微信读书挑战", `阅读完成，持续时间：${WEREAD_DURATION}分钟`);
+    }
   } catch (e) {
     // Add line number to error message if possible
     let errorMessage = String(e?.message || e || "Unknown error");
@@ -2100,7 +2139,10 @@ async function runMain() {
       level: "critical",
       sound: "alarm"
     });
-
+    
+    if (XTUI_KEY) {
+        sendXtui("微信读书挑战", `发生错误：${errorMessage.substring(0, 100)}${errorMessage.length > 100 ? '...' : ''}`);
+    }
     if (WEREAD_AGREE_TERMS) {
       logEventToWereadLog(errorMessage);
     }
